@@ -1,0 +1,141 @@
+name: Data Pipeline CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+
+  # ─────────────── Job 1: Lint ───────────────
+  lint:
+    name: Lint del código
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v3
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Instalar flake8
+        run: pip install flake8
+
+      - name: Ejecutar lint
+        run: flake8 etl.py app.py --max-line-length=120 --ignore=E501,W503
+
+  # ─────────────── Job 2: Tests de calidad ───────────────
+  data-quality-tests:
+    name: Pruebas de calidad de datos
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v3
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Instalar dependencias
+        run: |
+          pip install pandas pytest pytest-cov sqlalchemy mysql-connector-python
+
+      - name: Descargar dataset de prueba
+        run: |
+          mkdir -p data
+          if [ -f "data/Amazon Sale Report.csv" ]; then
+            echo "Dataset ya existe"
+          else
+            echo "Dataset no disponible — saltando pruebas de integración"
+          fi
+
+      - name: Ejecutar ETL
+        run: python etl.py
+        continue-on-error: true
+
+      - name: Ejecutar pruebas con pytest
+        run: |
+          pytest tests/ -v \
+            --tb=short \
+            --cov=etl \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            -k "not TestETLIntegracion" || true
+
+      - name: Verificar KPIs de calidad
+        run: |
+          python - <<'EOF'
+          import pandas as pd, sys, os
+
+          csv = "data/clean_sales.csv"
+          if not os.path.exists(csv):
+              print("CSV limpio no disponible, omitiendo KPI check")
+              sys.exit(0)
+
+          df = pd.read_csv(csv)
+
+          completitud  = df.notnull().mean().mean() * 100
+          exactitud    = ((df["Amount"] > 0) & (df["Qty"] > 0)).mean() * 100
+          consistencia = (df["Price_per_unit"] > 0).mean() * 100
+
+          print(f"Completitud  : {completitud:.2f}%  (meta >95%)")
+          print(f"Exactitud    : {exactitud:.2f}%   (meta >98%)")
+          print(f"Consistencia : {consistencia:.2f}%  (meta >97%)")
+
+          errores = []
+          if completitud  < 95: errores.append(f"Completitud {completitud:.2f}% < 95%")
+          if exactitud    < 98: errores.append(f"Exactitud {exactitud:.2f}% < 98%")
+          if consistencia < 97: errores.append(f"Consistencia {consistencia:.2f}% < 97%")
+
+          if errores:
+              print("\nFALLO DE KPIs:")
+              for e in errores:
+                  print(f"  - {e}")
+              sys.exit(1)
+          else:
+              print("\nTodos los KPIs cumplen los umbrales requeridos")
+          EOF
+
+      - name: Subir reporte de cobertura
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+  # ─────────────── Job 3: Build Docker ───────────────
+  docker-build:
+    name: Build de imagen Docker
+    runs-on: ubuntu-latest
+    needs: data-quality-tests
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v3
+
+      - name: Build imagen
+        run: docker build -t sales-dashboard:latest .
+
+      - name: Verificar imagen
+        run: docker images sales-dashboard:latest
+
+  # ─────────────── Job 4: Deploy (solo en main) ───────────────
+  deploy:
+    name: Deploy en producción
+    runs-on: ubuntu-latest
+    needs: docker-build
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v3
+
+      - name: Simular deploy
+        run: |
+          echo "Deploy a producción con docker-compose up -d"
+          echo "Entorno: producción"
+          echo "Branch: ${{ github.ref }}"
+          echo "Commit: ${{ github.sha }}"

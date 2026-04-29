@@ -1,0 +1,26 @@
+# ================================
+# SECRETOS — NUNCA SUBIR A GIT
+# ================================
+.env
+*.env
+.env.local
+.env.production
+
+# Dataset (demasiado grande)
+data/Amazon Sale Report.csv
+data/clean_sales.csv
+data/reports/
+
+# Logs
+logs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+coverage.xml
+
+# Docker
+mysql_data/

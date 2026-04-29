@@ -1,0 +1,17 @@
+name: Data Pipeline
+
+on: [push]
+
+jobs:
+  run-etl:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Clonar repo
+      uses: actions/checkout@v2
+
+    - name: Instalar dependencias
+      run: pip install pandas
+
+    - name: Ejecutar ETL
+      run: python etl.py

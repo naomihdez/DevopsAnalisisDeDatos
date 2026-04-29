@@ -1,0 +1,10 @@
+logs/
+data/
+dags/
+tests/
+.github/
+.gitignore
+*.md
+mysql_data/
+__pycache__/
+*.pyc

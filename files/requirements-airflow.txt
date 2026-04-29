@@ -1,0 +1,5 @@
+pandas==2.0.3
+sqlalchemy==1.4.52
+mysql-connector-python==8.3.0
+openpyxl==3.1.2
+xlrd==2.0.1

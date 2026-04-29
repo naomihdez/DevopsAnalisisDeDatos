@@ -1,0 +1,119 @@
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.8.1
+  env_file:
+    - .env
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqlconnector://${AIRFLOW_DB_USER}:${AIRFLOW_DB_PASSWORD}@mysql/${AIRFLOW_DB_NAME}
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./data:/opt/airflow/data
+    - ./etl.py:/opt/airflow/etl.py
+    - ./tests:/opt/airflow/tests
+    - ./requirements-airflow.txt:/requirements-airflow.txt
+  depends_on:
+    mysql:
+      condition: service_healthy
+
+services:
+
+  # ─────────────── MySQL ───────────────
+  mysql:
+    image: mysql:8.0
+    env_file:
+      - .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────── Airflow init ───────────────
+  airflow-init:
+    <<: *airflow-common
+    command: >
+      bash -c "
+        pip install --no-cache-dir -r /requirements-airflow.txt &&
+        airflow db migrate &&
+        airflow users create
+          --username admin
+          --password admin
+          --firstname Admin
+          --lastname User
+          --role Admin
+          --email admin@example.com || true
+      "
+    restart: on-failure
+
+  # ─────────────── Airflow webserver ───────────────
+  airflow-webserver:
+    <<: *airflow-common
+    command: >
+      bash -c "
+        pip install --no-cache-dir -r /requirements-airflow.txt &&
+        airflow webserver
+      "
+    ports:
+      - "8080:8080"
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ─────────────── Airflow scheduler ───────────────
+  airflow-scheduler:
+    <<: *airflow-common
+    command: >
+      bash -c "
+        pip install --no-cache-dir -r /requirements-airflow.txt &&
+        airflow scheduler
+      "
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    restart: always
+
+  # ─────────────── Dashboard Streamlit ───────────────
+  app:
+    build: .
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      MYSQL_HOST: ${MYSQL_HOST}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      APP_SECRET: ${APP_SECRET}
+      APP_USERS: ${APP_USERS}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: always
+
+volumes:
+  mysql_data:
