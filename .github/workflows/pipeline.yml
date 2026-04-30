@@ -14,4 +14,4 @@ jobs:
       run: pip install pandas
 
     - name: Ejecutar ETL
-      run: python etl.py
+      run: python files/etl.py
