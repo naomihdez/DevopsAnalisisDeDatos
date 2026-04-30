@@ -1,8 +1,6 @@
 name: Data Pipeline
 
-on:
-  push:
-    branches: [ "master" ]
+on: [push]
 
 jobs:
   run-etl:
@@ -10,15 +8,10 @@ jobs:
 
     steps:
     - name: Clonar repo
-      uses: actions/checkout@v4
-
-    - name: Configurar Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      uses: actions/checkout@v2
 
     - name: Instalar dependencias
-      run: pip install -r files/requirements.txt
+      run: pip install pandas
 
     - name: Ejecutar ETL
-      run: python files/etl.py
+      run: python etl.py
