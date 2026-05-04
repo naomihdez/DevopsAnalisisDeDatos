@@ -309,7 +309,7 @@ def run_etl() -> dict:
     os.makedirs("logs", exist_ok=True)
 
     # 1. Leer todos los CSVs
-    raw_files = extract_all("data")
+    raw_files = extract_all("files/data")
     if not raw_files:
         raise FileNotFoundError("No hay archivos CSV en data/")
 
